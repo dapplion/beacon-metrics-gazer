@@ -41,12 +41,18 @@ struct Cli {
     /// Dump participation ranges print to stderr on each fetch
     #[arg(long)]
     dump: bool,
+    /// Metrics server port
+    #[arg(long, short, default_value_t = 8080)]
+    port: u16,
+    /// Metrics server bind address
+    #[arg(long, default_value = "127.0.0.1")]
+    address: String,
 }
 
 type IndexRanges = Vec<(String, Range<usize>)>;
 type ParticipationByRange = Vec<(String, Range<usize>, f32)>;
 
-async fn handle_request(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
+async fn handle_metrics_server_request(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
     // Create the response
     let encoder = TextEncoder::new();
     let metric_families = prometheus::gather();
@@ -132,7 +138,7 @@ async fn task_fetch_state_every_epoch(
     config: &ConfigSpec,
     beacon_url: &str,
     ranges: &IndexRanges,
-    cli: &Cli,
+    dump: bool,
 ) -> Result<()> {
     loop {
         match current_epoch_start_slot(genesis, config) {
@@ -145,10 +151,9 @@ async fn task_fetch_state_every_epoch(
                     match fetch_epoch_participation(config, beacon_url).await {
                         Err(e) => eprintln!("error fetching state: {:?}", e),
                         Ok(state) => {
-                            let participation_by_range =
-                                group_target_participation(ranges, &state);
+                            let participation_by_range = group_target_participation(ranges, &state);
                             set_participation_to_metrics(&participation_by_range);
-                            if cli.dump {
+                            if dump {
                                 dump_participation_to_stdout(&participation_by_range);
                             }
                         }
@@ -194,14 +199,14 @@ async fn main() -> Result<()> {
     // Background task fetching state every interval and registering participation
     // in metrics with provided index ranges
     tokio::spawn(async move {
-        task_fetch_state_every_epoch(&genesis, &config, &beacon_url, &ranges, &cli).await
+        task_fetch_state_every_epoch(&genesis, &config, &beacon_url, &ranges, cli.dump).await
     });
 
     // Start metrics server
-    let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
-    let make_svc =
-        make_service_fn(|_conn| async { Ok::<_, Infallible>(service_fn(handle_request)) });
-    let server = Server::bind(&addr).serve(make_svc);
+    let addr: SocketAddr = format!("http://{}:{}", &cli.address, &cli.port).parse()?;
+    let server = Server::bind(&addr).serve(make_service_fn(|_conn| async {
+        Ok::<_, Infallible>(service_fn(handle_metrics_server_request))
+    }));
 
     println!("Server is running on http://{}", addr);
     if let Err(e) = server.await {

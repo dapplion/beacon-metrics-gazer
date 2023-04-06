@@ -107,8 +107,7 @@ pub fn deserialize_partial_state(config: &ConfigSpec, state: &Bytes) -> Result<S
     .to_vec();
     let current_epoch_participation = slice(
         state,
-        current_epoch_participation_offset
-            ..(current_epoch_participation_offset + validator_count),
+        current_epoch_participation_offset..(current_epoch_participation_offset + validator_count),
     )
     .context("current_epoch_participation_offset out of bounds")?
     .to_vec();

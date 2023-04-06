@@ -1,9 +1,9 @@
 use crate::config::fetch_genesis;
 use crate::ranges::{dump_ranges, parse_ranges};
-use crate::util::resolve_path_or_url;
-use anyhow::{anyhow, Context, Result};
+use crate::util::{current_epoch_start_slot, resolve_path_or_url, to_next_epoch_start};
+use anyhow::{anyhow, Context, Error, Result};
 use clap::Parser;
-use config::{fetch_config, ConfigSpec};
+use config::{fetch_config, ConfigSpec, Genesis};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, Server};
 use metrics::{set_gauge, TARGET_PARTICIPATION};
@@ -127,15 +127,55 @@ fn dump_participation_to_stdout(participation_by_range: &ParticipationByRange) {
     table.printstd();
 }
 
+async fn task_fetch_state_every_epoch(
+    genesis: &Genesis,
+    config: &ConfigSpec,
+    beacon_url: &str,
+    ranges: &IndexRanges,
+    cli: &Cli,
+) -> Result<()> {
+    loop {
+        match current_epoch_start_slot(&genesis, &config) {
+            Err(e) => eprintln!("error computing current epoch: {:?}", e),
+            Ok(slot) => {
+                if slot <= 0 {
+                    println!("before genesis, going to sleep")
+                } else {
+                    // Only after genesis
+                    match fetch_epoch_participation(&config, &beacon_url).await {
+                        Err(e) => eprintln!("error fetching state: {:?}", e),
+                        Ok(state) => {
+                            let participation_by_range =
+                                group_target_participation(&ranges, &state);
+                            set_participation_to_metrics(&participation_by_range);
+                            if cli.dump {
+                                dump_participation_to_stdout(&participation_by_range);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Run once on boot, then every interval at end of epoch
+
+        time::sleep(to_next_epoch_start(&genesis, &config).unwrap_or_else(|e| {
+            eprintln!("error computing to_next_epoch_start: {:?}", e);
+            Duration::from_secs(config.seconds_per_slot * config.slots_per_epoch)
+        }))
+        .await;
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    let beacon_url = cli.url;
+    let beacon_url = cli.url.clone();
 
     // Parse groups file mapping index ranges to host names
-    let ranges_str = if let Some(ranges_str) = cli.ranges {
-        ranges_str
-    } else if let Some(path_or_url) = cli.ranges_file {
+    let ranges_str = if let Some(ranges_str) = &cli.ranges {
+        ranges_str.clone()
+    } else if let Some(path_or_url) = &cli.ranges_file {
         resolve_path_or_url(&path_or_url).await?
     } else {
         return Err(anyhow!("Must set --groups or --groups_file"));
@@ -154,21 +194,7 @@ async fn main() -> Result<()> {
     // Background task fetching state every interval and registering participation
     // in metrics with provided index ranges
     tokio::spawn(async move {
-        loop {
-            match fetch_epoch_participation(&config, &beacon_url).await {
-                Ok(state) => {
-                    let participation_by_range = group_target_participation(&ranges, &state);
-                    set_participation_to_metrics(&participation_by_range);
-                    if cli.dump {
-                        dump_participation_to_stdout(&participation_by_range);
-                    }
-                }
-                Err(e) => eprintln!("error fetching state: {:?}", e),
-            };
-
-            // Run once on boot, then every interval at end of epoch
-            time::sleep(Duration::from_secs(5)).await;
-        }
+        task_fetch_state_every_epoch(&genesis, &config, &beacon_url, &ranges, &cli).await
     });
 
     // Start metrics server

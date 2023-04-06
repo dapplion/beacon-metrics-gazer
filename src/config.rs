@@ -3,8 +3,8 @@ use serde::Deserialize;
 
 #[derive(Debug)]
 pub struct ConfigSpec {
-    pub seconds_per_slot: usize,
-    pub slots_per_epoch: usize,
+    pub seconds_per_slot: u64,
+    pub slots_per_epoch: u64,
     pub slots_per_historical_root: usize,
     pub epochs_per_historical_vector: usize,
     pub epochs_per_slashings_vector: usize,
@@ -29,8 +29,8 @@ pub async fn fetch_config(url: &str) -> Result<ConfigSpec> {
     let response = reqwest::get(format!("{url}/eth/v1/config/spec")).await?;
     let data: ConfigSpecResponse = response.json().await?;
     Ok(ConfigSpec {
-        seconds_per_slot: parse_usize(&data.data.SECONDS_PER_SLOT, "SECONDS_PER_SLOT")?,
-        slots_per_epoch: parse_usize(&data.data.SLOTS_PER_EPOCH, "SLOTS_PER_EPOCH")?,
+        seconds_per_slot: parse_usize(&data.data.SECONDS_PER_SLOT, "SECONDS_PER_SLOT")? as u64,
+        slots_per_epoch: parse_usize(&data.data.SLOTS_PER_EPOCH, "SLOTS_PER_EPOCH")? as u64,
         slots_per_historical_root: parse_usize(
             &data.data.SLOTS_PER_HISTORICAL_ROOT,
             "SLOTS_PER_HISTORICAL_ROOT",

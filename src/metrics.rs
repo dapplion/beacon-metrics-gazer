@@ -35,9 +35,6 @@ lazy_static! {
     .unwrap();
 }
 
-
-
-
 /// Attempts to create a `GaugeVec`, returning `Err` if the registry does not accept the gauge
 /// (potentially due to naming conflict).
 fn try_create_gauge_vec(name: &str, help: &str, label_names: &[&str]) -> Result<GaugeVec> {

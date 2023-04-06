@@ -6,7 +6,9 @@ use clap::Parser;
 use config::{fetch_config, ConfigSpec, Genesis};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, Server};
-use metrics::{set_gauge, TARGET_PARTICIPATION, INACTIVITY_SCORES, HEAD_PARTICIPATION, SOURCE_PARTICIPATION};
+use metrics::{
+    set_gauge, HEAD_PARTICIPATION, INACTIVITY_SCORES, SOURCE_PARTICIPATION, TARGET_PARTICIPATION,
+};
 use prettytable::{format, Cell, Row, Table};
 use prometheus::{Encoder, TextEncoder};
 use ssz_state::{deserialize_partial_state, StatePartial};
@@ -141,10 +143,26 @@ fn group_target_participation(ranges: &IndexRanges, state: &StatePartial) -> Par
 
 fn set_participation_to_metrics(participation_by_range: &ParticipationByRange) {
     for (range_name, _, summary) in participation_by_range.iter() {
-        set_gauge(&SOURCE_PARTICIPATION, &[range_name], summary.source_participation_ratio as f64);
-        set_gauge(&TARGET_PARTICIPATION, &[range_name], summary.target_participation_ratio as f64);
-        set_gauge(&HEAD_PARTICIPATION, &[range_name], summary.head_participation_ratio as f64);
-        set_gauge(&INACTIVITY_SCORES, &[range_name], summary.inactivity_scores_avg as f64);
+        set_gauge(
+            &SOURCE_PARTICIPATION,
+            &[range_name],
+            summary.source_participation_ratio as f64,
+        );
+        set_gauge(
+            &TARGET_PARTICIPATION,
+            &[range_name],
+            summary.target_participation_ratio as f64,
+        );
+        set_gauge(
+            &HEAD_PARTICIPATION,
+            &[range_name],
+            summary.head_participation_ratio as f64,
+        );
+        set_gauge(
+            &INACTIVITY_SCORES,
+            &[range_name],
+            summary.inactivity_scores_avg as f64,
+        );
     }
 }
 

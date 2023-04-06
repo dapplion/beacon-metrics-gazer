@@ -18,9 +18,9 @@ jobs:
           toolchain: stable
           override: true
 
-#  - uses: katyo/publish-crates@v2
-#        with:
-#          registry-token: ${{ secrets.CRATES_IO_TOKEN }}
+      - uses: katyo/publish-crates@v2
+        with:
+          registry-token: ${{ secrets.CRATES_IO_TOKEN }}
 
       - name: "Generate release changelog"
         uses: heinrichreimer/github-changelog-generator-action@v2.3

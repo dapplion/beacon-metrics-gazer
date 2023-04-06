@@ -65,7 +65,6 @@ jobs:
   docs:
     name: Docs
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -74,6 +73,16 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Check documentation
+        run: cargo doc --no-deps --document-private-items --all-features  
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc --no-deps --document-private-items --all-features
+  
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Docker build
+        run: docker build .
+

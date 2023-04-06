@@ -101,14 +101,14 @@ pub fn deserialize_partial_state(config: &ConfigSpec, state: &Bytes) -> Result<S
     let previous_epoch_participation = slice(
         state,
         previous_epoch_participation_offset
-            ..(previous_epoch_participation_offset + validator_count * 1),
+            ..(previous_epoch_participation_offset + validator_count),
     )
     .context("previous_epoch_participation_offset out of bounds")?
     .to_vec();
     let current_epoch_participation = slice(
         state,
         current_epoch_participation_offset
-            ..(current_epoch_participation_offset + validator_count * 1),
+            ..(current_epoch_participation_offset + validator_count),
     )
     .context("current_epoch_participation_offset out of bounds")?
     .to_vec();
@@ -150,7 +150,7 @@ fn read_u64(buf: &Bytes, offset: usize) -> Result<u64> {
 fn convert_u8_to_u64(input: &[u8]) -> Vec<u64> {
     let num_u64s = input.len() / 8;
     let mut output = vec![0u64; num_u64s];
-    LittleEndian::read_u64_into(&input, &mut output);
+    LittleEndian::read_u64_into(input, &mut output);
     output
 }
 

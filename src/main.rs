@@ -1,7 +1,7 @@
 use crate::config::fetch_genesis;
 use crate::ranges::{dump_ranges, parse_ranges};
 use crate::util::{current_epoch_start_slot, resolve_path_or_url, to_next_epoch_start};
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use config::{fetch_config, ConfigSpec, Genesis};
 use hyper::service::{make_service_fn, service_fn};
@@ -71,7 +71,7 @@ async fn fetch_epoch_participation(
         .await?;
     let state_buf = req.bytes().await?;
 
-    Ok(deserialize_partial_state(config, &state_buf)?)
+    deserialize_partial_state(config, &state_buf)
 }
 
 // https://github.com/ethereum/consensus-specs/blob/4a27f855439c16612ab1ae3995d71bed54f979ea/specs/altair/beacon-chain.md#participation-flag-indices
@@ -118,7 +118,7 @@ fn dump_participation_to_stdout(participation_by_range: &ParticipationByRange) {
 
     for (range_name, range, target_ratio) in participation_by_range.iter() {
         table.add_row(Row::new(vec![
-            Cell::new(&range_name),
+            Cell::new(range_name),
             Cell::new(&format!("{:?}", &range)),
             Cell::new(&target_ratio.to_string()),
         ]));
@@ -135,18 +135,18 @@ async fn task_fetch_state_every_epoch(
     cli: &Cli,
 ) -> Result<()> {
     loop {
-        match current_epoch_start_slot(&genesis, &config) {
+        match current_epoch_start_slot(genesis, config) {
             Err(e) => eprintln!("error computing current epoch: {:?}", e),
             Ok(slot) => {
-                if slot <= 0 {
+                if slot == 0 {
                     println!("before genesis, going to sleep")
                 } else {
                     // Only after genesis
-                    match fetch_epoch_participation(&config, &beacon_url).await {
+                    match fetch_epoch_participation(config, beacon_url).await {
                         Err(e) => eprintln!("error fetching state: {:?}", e),
                         Ok(state) => {
                             let participation_by_range =
-                                group_target_participation(&ranges, &state);
+                                group_target_participation(ranges, &state);
                             set_participation_to_metrics(&participation_by_range);
                             if cli.dump {
                                 dump_participation_to_stdout(&participation_by_range);
@@ -159,7 +159,7 @@ async fn task_fetch_state_every_epoch(
 
         // Run once on boot, then every interval at end of epoch
 
-        time::sleep(to_next_epoch_start(&genesis, &config).unwrap_or_else(|e| {
+        time::sleep(to_next_epoch_start(genesis, config).unwrap_or_else(|e| {
             eprintln!("error computing to_next_epoch_start: {:?}", e);
             Duration::from_secs(config.seconds_per_slot * config.slots_per_epoch)
         }))
@@ -176,7 +176,7 @@ async fn main() -> Result<()> {
     let ranges_str = if let Some(ranges_str) = &cli.ranges {
         ranges_str.clone()
     } else if let Some(path_or_url) = &cli.ranges_file {
-        resolve_path_or_url(&path_or_url).await?
+        resolve_path_or_url(path_or_url).await?
     } else {
         return Err(anyhow!("Must set --groups or --groups_file"));
     };

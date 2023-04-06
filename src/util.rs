@@ -49,8 +49,8 @@ pub fn to_next_epoch_start(genesis: &Genesis, config: &ConfigSpec) -> Result<Dur
     let now = SystemTime::now();
     let now_unix_sec = now.duration_since(UNIX_EPOCH)?.as_secs();
     if now_unix_sec < genesis.genesis_time {
-        // Before genesis
-        let one_epoch_sec = 1 * config.slots_per_epoch * config.seconds_per_slot;
+        // Before genesis, return epoch 1
+        let one_epoch_sec = config.slots_per_epoch * config.seconds_per_slot;
         return Ok(Duration::from_secs(
             one_epoch_sec + genesis.genesis_time - now_unix_sec,
         ));

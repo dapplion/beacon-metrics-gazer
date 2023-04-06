@@ -5,6 +5,15 @@ use std::{collections::HashMap, ops::Range};
 pub type IndexRanges = Vec<(String, Range<usize>)>;
 type IndexRangesJson = HashMap<String, String>;
 
+/// Render ranges for CLI dumps
+pub fn dump_ranges(ranges: &IndexRanges) -> String {
+    ranges
+        .iter()
+        .map(|(s, range)| format!("{}..{}: {}", range.start, range.end, s))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Parse group file contents flexibly, either as JSON first or then TXT
 pub fn parse_ranges(input: &str) -> Result<IndexRanges> {
     if let Ok(groups) = parse_ranges_as_json(input) {

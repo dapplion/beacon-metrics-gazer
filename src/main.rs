@@ -1,5 +1,5 @@
 use crate::config::fetch_genesis;
-use crate::ranges::parse_ranges;
+use crate::ranges::{dump_ranges, parse_ranges};
 use crate::util::resolve_path_or_url;
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
@@ -11,7 +11,6 @@ use prettytable::{format, Cell, Row, Table};
 use prometheus::{Encoder, TextEncoder};
 use ssz_state::{deserialize_partial_state, StatePartial};
 use std::convert::Infallible;
-use std::io::prelude::*;
 use std::net::SocketAddr;
 use std::ops::Range;
 use std::time::Duration;
@@ -71,9 +70,6 @@ async fn fetch_epoch_participation(
         .send()
         .await?;
     let state_buf = req.bytes().await?;
-
-    let mut f = std::fs::File::create("state.ssz").unwrap();
-    f.write_all(&state_buf).unwrap();
 
     Ok(deserialize_partial_state(config, &state_buf)?)
 }
@@ -145,6 +141,7 @@ async fn main() -> Result<()> {
         return Err(anyhow!("Must set --groups or --groups_file"));
     };
     let ranges = parse_ranges(&ranges_str)?;
+    println!("index ranges ---\n{}\n---", dump_ranges(&ranges));
 
     println!("connecting to beacon URL {:?}", beacon_url);
 

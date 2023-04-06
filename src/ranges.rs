@@ -57,6 +57,8 @@ fn parse_ranges_as_json(input: &str) -> Result<IndexRanges> {
     for (range_str, name) in data {
         result.push((name, parse_range(&range_str)?));
     }
+    // serde_json uses HashMap which does not preserve order. Enforce ascending index order
+    result.sort_by_key(|(_, range)| range.start);
     Ok(result)
 }
 

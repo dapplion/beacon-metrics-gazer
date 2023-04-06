@@ -1,0 +1,13 @@
+0-500 Nethermind lighthouse-0
+500-1000 Nethermind lighthouse-1
+1000-1500 Nethermind teku-0
+1500-2000 Nethermind teku-1
+2000-2500 Nethermind lodestar-0
+2500-3750 Gateway lh + nethermind
+3750-5000 Gateway lh + nethermind
+5000-6250 Gateway lh + erigon
+6150-7500 Gateway lh + erigon
+7500-8125 Gnosis NE + LH (Gnosis-NE-LH in Ethstats)
+8125-8750 Gnosis NE + LH (Gnosis-NE-LH2 in Ethstats)
+8750-9375 Gnosis Erigon + LH (Gnosis-Erigon-LH in Ethstats)
+9375-10000 Gnosis NE + Teku (Gnosis-NE-Teku in Ethstats)

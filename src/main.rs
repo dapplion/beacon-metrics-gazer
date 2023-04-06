@@ -6,7 +6,7 @@ use clap::Parser;
 use config::{fetch_config, ConfigSpec, Genesis};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, Server};
-use metrics::{set_gauge, TARGET_PARTICIPATION};
+use metrics::{set_gauge, TARGET_PARTICIPATION, INACTIVITY_SCORES, HEAD_PARTICIPATION, SOURCE_PARTICIPATION};
 use prettytable::{format, Cell, Row, Table};
 use prometheus::{Encoder, TextEncoder};
 use ssz_state::{deserialize_partial_state, StatePartial};
@@ -50,7 +50,13 @@ struct Cli {
 }
 
 type IndexRanges = Vec<(String, Range<usize>)>;
-type ParticipationByRange = Vec<(String, Range<usize>, f32)>;
+struct RangeSummary {
+    target_participation_ratio: f32,
+    head_participation_ratio: f32,
+    source_participation_ratio: f32,
+    inactivity_scores_avg: f32,
+}
+type ParticipationByRange = Vec<(String, Range<usize>, RangeSummary)>;
 
 async fn handle_metrics_server_request(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
     // Create the response
@@ -81,34 +87,64 @@ async fn fetch_epoch_participation(
 }
 
 // https://github.com/ethereum/consensus-specs/blob/4a27f855439c16612ab1ae3995d71bed54f979ea/specs/altair/beacon-chain.md#participation-flag-indices
-// const TIMELY_SOURCE_FLAG_INDEX: u8 = 0;
+const TIMELY_SOURCE_FLAG_INDEX: u8 = 0;
 const TIMELY_TARGET_FLAG_INDEX: u8 = 1;
-// const TIMELY_HEAD_FLAG_INDEX: u8 = 2;
-// const TIMELY_SOURCE: u8 = 1 << TIMELY_SOURCE_FLAG_INDEX;
+const TIMELY_HEAD_FLAG_INDEX: u8 = 2;
+const TIMELY_SOURCE: u8 = 1 << TIMELY_SOURCE_FLAG_INDEX;
 const TIMELY_TARGET: u8 = 1 << TIMELY_TARGET_FLAG_INDEX;
-// const TIMELY_HEAD: u8 = 1 << TIMELY_HEAD_FLAG_INDEX;
+const TIMELY_HEAD: u8 = 1 << TIMELY_HEAD_FLAG_INDEX;
 
 fn has_flag(flag: u8, mask: u8) -> bool {
     flag & mask == mask
+}
+
+fn participation_avg(participation: &[u8], range: &Range<usize>, flag_mask: u8) -> f32 {
+    let participant_count: u32 = participation[range.clone()]
+        .iter()
+        .map(|f| has_flag(*f, flag_mask) as u32)
+        .sum();
+    participant_count as f32 / (range.end - range.start) as f32
 }
 
 fn group_target_participation(ranges: &IndexRanges, state: &StatePartial) -> ParticipationByRange {
     ranges
         .iter()
         .map(|(range_name, range)| {
-            let target_count: u32 = state.previous_epoch_participation[range.clone()]
-                .iter()
-                .map(|f| has_flag(*f, TIMELY_TARGET) as u32)
-                .sum();
-            let target_ratio = target_count as f32 / (range.end - range.start) as f32;
-            (range_name.clone(), range.clone(), target_ratio)
+            (
+                range_name.clone(),
+                range.clone(),
+                RangeSummary {
+                    target_participation_ratio: participation_avg(
+                        &state.previous_epoch_participation,
+                        range,
+                        TIMELY_TARGET,
+                    ),
+                    source_participation_ratio: participation_avg(
+                        &state.previous_epoch_participation,
+                        range,
+                        TIMELY_SOURCE,
+                    ),
+                    head_participation_ratio: participation_avg(
+                        &state.previous_epoch_participation,
+                        range,
+                        TIMELY_HEAD,
+                    ),
+                    inactivity_scores_avg: state.inactivity_scores[range.clone()]
+                        .iter()
+                        .sum::<u64>() as f32
+                        / (range.end - range.start) as f32,
+                },
+            )
         })
         .collect()
 }
 
 fn set_participation_to_metrics(participation_by_range: &ParticipationByRange) {
-    for (range_name, _, target_ratio) in participation_by_range.iter() {
-        set_gauge(&TARGET_PARTICIPATION, &[range_name], *target_ratio as f64);
+    for (range_name, _, summary) in participation_by_range.iter() {
+        set_gauge(&SOURCE_PARTICIPATION, &[range_name], summary.source_participation_ratio as f64);
+        set_gauge(&TARGET_PARTICIPATION, &[range_name], summary.target_participation_ratio as f64);
+        set_gauge(&HEAD_PARTICIPATION, &[range_name], summary.head_participation_ratio as f64);
+        set_gauge(&INACTIVITY_SCORES, &[range_name], summary.inactivity_scores_avg as f64);
     }
 }
 
@@ -119,14 +155,18 @@ fn dump_participation_to_stdout(participation_by_range: &ParticipationByRange) {
     table.add_row(Row::new(vec![
         Cell::new("Name"),
         Cell::new("Range"),
-        Cell::new("Target participation"),
+        Cell::new("Source"),
+        Cell::new("Target"),
+        Cell::new("Head"),
     ]));
 
-    for (range_name, range, target_ratio) in participation_by_range.iter() {
+    for (range_name, range, summary) in participation_by_range.iter() {
         table.add_row(Row::new(vec![
             Cell::new(range_name),
             Cell::new(&format!("{:?}", &range)),
-            Cell::new(&target_ratio.to_string()),
+            Cell::new(&summary.source_participation_ratio.to_string()),
+            Cell::new(&summary.target_participation_ratio.to_string()),
+            Cell::new(&summary.head_participation_ratio.to_string()),
         ]));
     }
 

@@ -3,6 +3,14 @@ use lazy_static::lazy_static;
 use prometheus::GaugeVec;
 
 lazy_static! {
+    pub static ref SOURCE_PARTICIPATION: GaugeVec = try_create_gauge_vec(
+        "beacon_network_source_participation",
+        "Source participation in previous epoch by pre-defined named ranges",
+        &["range"]
+    )
+    .unwrap();
+}
+lazy_static! {
     pub static ref TARGET_PARTICIPATION: GaugeVec = try_create_gauge_vec(
         "beacon_network_target_participation",
         "Target participation in previous epoch by pre-defined named ranges",
@@ -10,6 +18,25 @@ lazy_static! {
     )
     .unwrap();
 }
+lazy_static! {
+    pub static ref HEAD_PARTICIPATION: GaugeVec = try_create_gauge_vec(
+        "beacon_network_head_participation",
+        "Head participation in previous epoch by pre-defined named ranges",
+        &["range"]
+    )
+    .unwrap();
+}
+lazy_static! {
+    pub static ref INACTIVITY_SCORES: GaugeVec = try_create_gauge_vec(
+        "beacon_network_inactivity_scores",
+        "Inactivity scores avg by pre-defined named ranges",
+        &["range"]
+    )
+    .unwrap();
+}
+
+
+
 
 /// Attempts to create a `GaugeVec`, returning `Err` if the registry does not accept the gauge
 /// (potentially due to naming conflict).

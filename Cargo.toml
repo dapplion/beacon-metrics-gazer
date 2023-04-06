@@ -21,6 +21,7 @@ bytes = "1.4.0"
 byteorder = "1.4.3"
 prettytable-rs = "0.10.0"
 regex = "1.7.3"
+url = "2.3.1"
 
 [patch]
 [patch.crates-io]

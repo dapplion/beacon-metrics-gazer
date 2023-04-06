@@ -47,7 +47,6 @@ jobs:
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           bin: beacon-metrics-gazer
-          features: bin
           tar: unix
           zip: windows
           token: ${{ secrets.GITHUB_TOKEN }}

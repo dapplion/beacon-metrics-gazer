@@ -2,6 +2,13 @@
 name = "beacon-metrics-gazer"
 version = "0.1.0"
 edition = "2021"
+description = "Collects network wide participation metrics given a range of indexes"
+keywords = ["ethereum", "beacon chain", "metrics"]
+repository = "https://github.com/dapplion/beacon-metrics-gazer"
+documentation = "https://docs.rs/beacon-metrics-gazer"
+authors = ["dapplion <dapplion@chainsafe.io>"]
+readme = "README.md"
+license = "MIT OR Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

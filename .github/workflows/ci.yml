@@ -76,13 +76,20 @@ jobs:
         run: cargo doc --no-deps --document-private-items --all-features  
         env:
           RUSTDOCFLAGS: -D warnings
-  
-  docker:
-    name: Docker build
+ 
+  build-and-publish-docker:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-      - name: Docker build
-        run: docker build .
+      - uses: actions/checkout@v3
+      - uses: docker/setup-buildx-action@v2
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          load: true
+          tags: beacon-metrics-gazer:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Test image
+        run: docker run --rm beacon-metrics-gazer:latest --help
 

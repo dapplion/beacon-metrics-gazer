@@ -261,7 +261,8 @@ async fn main() -> Result<()> {
     });
 
     // Start metrics server
-    let addr: SocketAddr = format!("http://{}:{}", &cli.address, &cli.port).parse()?;
+
+    let addr = SocketAddr::new(cli.address.parse()?, cli.port);
     let server = Server::bind(&addr).serve(make_service_fn(|_conn| async {
         Ok::<_, Infallible>(service_fn(handle_metrics_server_request))
     }));

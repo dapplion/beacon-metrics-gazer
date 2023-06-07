@@ -2,6 +2,7 @@
 
 Collects network wide participation metrics given a range of indexes
 
+<!-- HELP_START -->
 ```
 Usage: beacon-metrics-gazer [OPTIONS] <URL>
 
@@ -16,7 +17,8 @@ Options:
       --address <ADDRESS>          Metrics server bind address [default: 127.0.0.1]
   -h, --help                       Print help
   -V, --version                    Print version
-``` 
+```
+<!-- HELP_END -->
 
 It's convenient to upload the ranges file somewhere persistent like a Github gist
 

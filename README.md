@@ -2,13 +2,17 @@
 
 Collects network wide participation metrics given a range of indexes
 
+<!-- HELP_START -->
 ```
+Collects network wide participation metrics given a range of indexes
+
 Usage: beacon-metrics-gazer [OPTIONS] <URL>
 
 Arguments:
   <URL>  Beacon HTTP API URL: http://1.2.3.4:4000
 
 Options:
+  -H, --headers <HEADERS>          Extra headers sent to each request to the beacon node API at `url`. Same format as curl: `-H "Authorization: Bearer {token}"`
       --ranges <RANGES>            Index ranges to group IDs as JSON or TXT. Example: `{"0..100": "lh-geth-0", "100..200": "lh-geth-1"}
       --ranges-file <RANGES_FILE>  Local path or URL containing a file with index ranges with the format as defined in --ranges
       --dump                       Dump participation ranges print to stderr on each fetch
@@ -16,7 +20,9 @@ Options:
       --address <ADDRESS>          Metrics server bind address [default: 127.0.0.1]
   -h, --help                       Print help
   -V, --version                    Print version
-``` 
+
+```
+<!-- HELP_END -->
 
 It's convenient to upload the ranges file somewhere persistent like a Github gist
 

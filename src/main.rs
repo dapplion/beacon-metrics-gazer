@@ -4,8 +4,9 @@ use crate::util::{current_epoch_start_slot, resolve_path_or_url, to_next_epoch_s
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use config::{fetch_config, ConfigSpec, Genesis};
+use hyper::header::HeaderName;
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Request, Response, Server};
+use hyper::{Body, HeaderMap, Request, Response, Server};
 use metrics::{
     set_gauge, HEAD_PARTICIPATION, INACTIVITY_SCORES, SOURCE_PARTICIPATION, TARGET_PARTICIPATION,
 };
@@ -15,6 +16,7 @@ use ssz_state::{deserialize_partial_state, StatePartial};
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::ops::Range;
+use std::str::FromStr;
 use std::time::Duration;
 use tokio::time;
 
@@ -32,9 +34,13 @@ mod util;
 struct Cli {
     /// Beacon HTTP API URL: http://1.2.3.4:4000
     url: String,
-    #[arg(long)]
+    /// Extra headers sent to each request to the beacon node API at `url`.
+    /// Same format as curl: `-H "Authorization: Bearer {token}"`
+    #[arg(long, short = 'H')]
+    headers: Option<Vec<String>>,
     /// Index ranges to group IDs as JSON or TXT. Example:
     /// `{"0..100": "lh-geth-0", "100..200": "lh-geth-1"}
+    #[arg(long)]
     ranges: Option<String>,
     /// Local path or URL containing a file with index ranges
     /// with the format as defined in --ranges
@@ -76,11 +82,12 @@ async fn handle_metrics_server_request(_req: Request<Body>) -> Result<Response<B
 async fn fetch_epoch_participation(
     config: &ConfigSpec,
     beacon_url: &str,
-    // slot: u64,
+    extra_headers: &HeaderMap,
 ) -> Result<StatePartial> {
     let req = reqwest::Client::new()
         .get(format!("{beacon_url}/eth/v2/debug/beacon/states/head",))
         .header(reqwest::header::ACCEPT, "application/octet-stream")
+        .headers(extra_headers.clone())
         .send()
         .await?;
     let state_buf = req.bytes().await?;
@@ -195,6 +202,7 @@ async fn task_fetch_state_every_epoch(
     genesis: &Genesis,
     config: &ConfigSpec,
     beacon_url: &str,
+    extra_headers: &HeaderMap,
     ranges: &IndexRanges,
     dump: bool,
 ) -> Result<()> {
@@ -206,7 +214,7 @@ async fn task_fetch_state_every_epoch(
                     println!("before genesis, going to sleep")
                 } else {
                     // Only after genesis
-                    match fetch_epoch_participation(config, beacon_url).await {
+                    match fetch_epoch_participation(config, beacon_url, extra_headers).await {
                         Err(e) => eprintln!("error fetching state: {:?}", e),
                         Ok(state) => {
                             let participation_by_range = group_target_participation(ranges, &state);
@@ -235,6 +243,23 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let beacon_url = cli.url.clone();
 
+    println!("connecting to beacon URL {:?}", beacon_url);
+
+    let mut extra_headers = HeaderMap::new();
+    if let Some(headers_str) = cli.headers {
+        for header_str in headers_str {
+            let parts: Vec<&str> = header_str.split(':').collect();
+            if parts.len() != 2 {
+                return Err(anyhow!("Invalid header: {}", header_str));
+            }
+
+            let name = HeaderName::from_str(parts[0])?;
+            let value = parts[1].trim().parse()?;
+            extra_headers.insert(name, value);
+        }
+        println!("extra headers {:?}", extra_headers);
+    }
+
     // Parse groups file mapping index ranges to host names
     let ranges_str = if let Some(ranges_str) = &cli.ranges {
         ranges_str.clone()
@@ -246,8 +271,6 @@ async fn main() -> Result<()> {
     let ranges = parse_ranges(&ranges_str)?;
     println!("index ranges ---\n{}\n---", dump_ranges(&ranges));
 
-    println!("connecting to beacon URL {:?}", beacon_url);
-
     let genesis = fetch_genesis(&beacon_url).await.context("fetch_genesis")?;
     println!("beacon genesis {:?}", genesis);
 
@@ -257,7 +280,15 @@ async fn main() -> Result<()> {
     // Background task fetching state every interval and registering participation
     // in metrics with provided index ranges
     tokio::spawn(async move {
-        task_fetch_state_every_epoch(&genesis, &config, &beacon_url, &ranges, cli.dump).await
+        task_fetch_state_every_epoch(
+            &genesis,
+            &config,
+            &beacon_url,
+            &extra_headers,
+            &ranges,
+            cli.dump,
+        )
+        .await
     });
 
     // Start metrics server

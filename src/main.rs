@@ -4,7 +4,7 @@ use crate::util::{current_epoch_start_slot, resolve_path_or_url, to_next_epoch_s
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use config::{fetch_config, ConfigSpec, Genesis};
-use hyper::header::HeaderName;
+use hyper::header::{HeaderName, CONTENT_TYPE};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, HeaderMap, Request, Response, Server};
 use metrics::{
@@ -79,6 +79,8 @@ async fn handle_metrics_server_request(_req: Request<Body>) -> Result<Response<B
         .unwrap())
 }
 
+const CONTENT_TYPE_SSZ: &str = "application/octet-stream";
+
 async fn fetch_epoch_participation(
     config: &ConfigSpec,
     beacon_url: &str,
@@ -86,10 +88,34 @@ async fn fetch_epoch_participation(
 ) -> Result<StatePartial> {
     let req = reqwest::Client::new()
         .get(format!("{beacon_url}/eth/v2/debug/beacon/states/head",))
-        .header(reqwest::header::ACCEPT, "application/octet-stream")
+        .header(reqwest::header::ACCEPT, CONTENT_TYPE_SSZ)
         .headers(extra_headers.clone())
         .send()
         .await?;
+
+    // Guard against bad responses, else this function will attempt to decode a 404 html as if it
+    // was an SSZ state
+    if !req.status().is_success() {
+        return Err(anyhow!(
+            "getStates returned not success code {}",
+            req.status().as_str()
+        ));
+    }
+
+    // Additional guard in case the server sends JSON instead of SSZ. Could happen if a proxy or
+    // some middleware strips the CONTENT_TYPE header out of this request
+    if let Some(content_type) = req.headers().get(CONTENT_TYPE) {
+        if let Ok(content_type) = content_type.to_str() {
+            if !content_type.contains(CONTENT_TYPE_SSZ) {
+                return Err(anyhow!(
+                    "getState content-type not {}: {}",
+                    CONTENT_TYPE_SSZ,
+                    content_type
+                ));
+            }
+        }
+    }
+
     let state_buf = req.bytes().await?;
 
     deserialize_partial_state(config, &state_buf)

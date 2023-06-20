@@ -179,40 +179,62 @@ mod tests {
         Ok(vec_uint)
     }
 
+    const CONFIG_GNOSIS: ConfigSpec = ConfigSpec {
+        seconds_per_slot: 5,
+        slots_per_epoch: 16,
+        slots_per_historical_root: 8192,
+        epochs_per_historical_vector: 65536,
+        epochs_per_slashings_vector: 8192,
+    };
+
+    const CONFIG_MAINNET: ConfigSpec = ConfigSpec {
+        seconds_per_slot: 12,
+        slots_per_epoch: 32,
+        slots_per_historical_root: 8192,
+        epochs_per_historical_vector: 65536,
+        epochs_per_slashings_vector: 8192,
+    };
+
     #[test]
     fn devnet_state() {
-        let config = ConfigSpec {
-            seconds_per_slot: 5,
-            slots_per_epoch: 16,
-            slots_per_historical_root: 8192,
-            epochs_per_historical_vector: 65536,
-            epochs_per_slashings_vector: 8192,
-        };
+        for (filename, config) in [
+            ("src/fixtures/state_148990", CONFIG_GNOSIS),
+            (
+                "src/fixtures/state_devnet6_genesistime-1686904523_slot-416",
+                CONFIG_MAINNET,
+            ),
+        ] {
+            let state_json = fs::read_to_string(format!("{}.json", filename)).unwrap();
+            let state_bytes = fs::read(format!("{}.ssz", filename)).unwrap();
+            let state_json: StateJsonStr = serde_json::from_str(&state_json).unwrap();
+            let state_buf = BytesMut::from_iter(state_bytes.iter()).freeze();
+            let state = deserialize_partial_state(&config, &state_buf).unwrap();
 
-        let slot = 148990;
-        let state_json = fs::read_to_string(format!("src/fixtures/state_{slot}.json")).unwrap();
-        let state_bytes = fs::read(format!("src/fixtures/state_{slot}.ssz")).unwrap();
-        let state_json: StateJsonStr = serde_json::from_str(&state_json).unwrap();
-        let state_buf = BytesMut::from_iter(state_bytes.iter()).freeze();
-        let state = deserialize_partial_state(&config, &state_buf).unwrap();
+            assert_eq!(
+                state.slot,
+                state_json.slot.parse::<u64>().unwrap(),
+                "slot {}",
+                filename
+            );
 
-        assert_eq!(slot, state.slot);
-        assert_eq!(slot, state_json.slot.parse::<u64>().unwrap());
-
-        assert_eq!(
-            hex::encode(state.previous_epoch_participation),
-            hex::encode(from_vec_str::<u8>(&state_json.previous_epoch_participation).unwrap()),
-            "previous_epoch_participation"
-        );
-        assert_eq!(
-            hex::encode(state.current_epoch_participation),
-            hex::encode(from_vec_str::<u8>(&state_json.current_epoch_participation).unwrap()),
-            "current_epoch_participation"
-        );
-        assert_eq!(
-            state.inactivity_scores,
-            from_vec_str::<u64>(&state_json.inactivity_scores).unwrap(),
-            "inactivity_scores"
-        );
+            assert_eq!(
+                hex::encode(state.previous_epoch_participation),
+                hex::encode(from_vec_str::<u8>(&state_json.previous_epoch_participation).unwrap()),
+                "previous_epoch_participation {}",
+                filename
+            );
+            assert_eq!(
+                hex::encode(state.current_epoch_participation),
+                hex::encode(from_vec_str::<u8>(&state_json.current_epoch_participation).unwrap()),
+                "current_epoch_participation {}",
+                filename
+            );
+            assert_eq!(
+                state.inactivity_scores,
+                from_vec_str::<u64>(&state_json.inactivity_scores).unwrap(),
+                "inactivity_scores {}",
+                filename
+            );
+        }
     }
 }

@@ -297,10 +297,10 @@ async fn main() -> Result<()> {
     let ranges = parse_ranges(&ranges_str)?;
     println!("index ranges ---\n{}\n---", dump_ranges(&ranges));
 
-    let genesis = fetch_genesis(&beacon_url).await.context("fetch_genesis")?;
+    let genesis = fetch_genesis(&beacon_url, &extra_headers).await.context("fetch_genesis")?;
     println!("beacon genesis {:?}", genesis);
 
-    let config = fetch_config(&beacon_url).await.context("fetch_config")?;
+    let config = fetch_config(&beacon_url, &extra_headers).await.context("fetch_config")?;
     println!("beacon config {:?}", config);
 
     // Background task fetching state every interval and registering participation

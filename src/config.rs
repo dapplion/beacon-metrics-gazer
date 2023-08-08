@@ -1,4 +1,5 @@
 use anyhow::{Error, Result};
+use reqwest::header::HeaderMap;
 use serde::Deserialize;
 
 #[derive(Debug)]
@@ -25,8 +26,12 @@ struct ConfigSpecResponse {
     data: ConfigSpecResponseData,
 }
 
-pub async fn fetch_config(url: &str) -> Result<ConfigSpec> {
-    let response = reqwest::get(format!("{url}/eth/v1/config/spec")).await?;
+pub async fn fetch_config(url: &str, extra_headers: &HeaderMap) -> Result<ConfigSpec> {
+    let response = reqwest::Client::new()
+        .get(format!("{}/eth/v1/config/spec", url))
+        .headers(extra_headers.clone())
+        .send()
+        .await?;
     let data: ConfigSpecResponse = response.json().await?;
     Ok(ConfigSpec {
         seconds_per_slot: parse_usize(&data.data.SECONDS_PER_SLOT, "SECONDS_PER_SLOT")? as u64,
@@ -65,8 +70,12 @@ struct BeaconGenesisResponseData {
     genesis_time: String,
 }
 
-pub async fn fetch_genesis(url: &str) -> Result<Genesis> {
-    let response = reqwest::get(format!("{url}/eth/v1/beacon/genesis")).await?;
+pub async fn fetch_genesis(url: &str, extra_headers: &HeaderMap) -> Result<Genesis> {
+    let response = reqwest::Client::new()
+        .get(format!("{}/eth/v1/beacon/genesis", url))
+        .headers(extra_headers.clone())
+        .send()
+        .await?;
     let data: BeaconGenesisResponse = response.json().await?;
     Ok(Genesis {
         genesis_time: data.data.genesis_time.parse()?,

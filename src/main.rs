@@ -8,7 +8,8 @@ use hyper::header::{HeaderName, CONTENT_TYPE};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, HeaderMap, Request, Response, Server};
 use metrics::{
-    set_gauge, HEAD_PARTICIPATION, INACTIVITY_SCORES, SOURCE_PARTICIPATION, TARGET_PARTICIPATION,
+    set_gauge, HEAD_PARTICIPATION, INACTIVITY_SCORES, INDEXES_PER_GROUP, SOURCE_PARTICIPATION,
+    TARGET_PARTICIPATION,
 };
 use prettytable::{format, Cell, Row, Table};
 use prometheus::{Encoder, TextEncoder};
@@ -179,7 +180,7 @@ fn group_target_participation(
 }
 
 fn set_participation_to_metrics(participation_by_range: &ParticipationByRange) {
-    for (range_name, _, summary) in participation_by_range.iter() {
+    for (range_name, indexes, summary) in participation_by_range.iter() {
         set_gauge(
             &SOURCE_PARTICIPATION,
             &[range_name],
@@ -200,6 +201,7 @@ fn set_participation_to_metrics(participation_by_range: &ParticipationByRange) {
             &[range_name],
             summary.inactivity_scores_avg as f64,
         );
+        set_gauge(&INDEXES_PER_GROUP, &[range_name], indexes.len() as f64);
     }
 }
 

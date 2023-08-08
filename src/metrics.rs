@@ -34,6 +34,14 @@ lazy_static! {
     )
     .unwrap();
 }
+lazy_static! {
+    pub static ref INDEXES_PER_GROUP: GaugeVec = try_create_gauge_vec(
+        "beacon_network_indexes_per_group",
+        "Count of indexes in a labeled group",
+        &["range"]
+    )
+    .unwrap();
+}
 
 /// Attempts to create a `GaugeVec`, returning `Err` if the registry does not accept the gauge
 /// (potentially due to naming conflict).

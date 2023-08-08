@@ -1,5 +1,5 @@
 use crate::config::fetch_genesis;
-use crate::ranges::{dump_ranges, parse_ranges};
+use crate::ranges::parse_ranges;
 use crate::util::{current_epoch_start_slot, resolve_path_or_url, to_next_epoch_start};
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
@@ -15,7 +15,6 @@ use prometheus::{Encoder, TextEncoder};
 use ssz_state::{deserialize_partial_state, StatePartial};
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use std::ops::Range;
 use std::str::FromStr;
 use std::time::Duration;
 use tokio::time;
@@ -57,14 +56,14 @@ struct Cli {
     address: String,
 }
 
-type IndexRanges = Vec<(String, Range<usize>)>;
+type IndexGroups = Vec<(String, Vec<usize>)>;
 struct RangeSummary {
     target_participation_ratio: f32,
     head_participation_ratio: f32,
     source_participation_ratio: f32,
     inactivity_scores_avg: f32,
 }
-type ParticipationByRange = Vec<(String, Range<usize>, RangeSummary)>;
+type ParticipationByRange = Vec<(String, Vec<usize>, RangeSummary)>;
 
 async fn handle_metrics_server_request(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
     // Create the response
@@ -133,41 +132,46 @@ fn has_flag(flag: u8, mask: u8) -> bool {
     flag & mask == mask
 }
 
-fn participation_avg(participation: &[u8], range: &Range<usize>, flag_mask: u8) -> f32 {
-    let participant_count: u32 = participation[range.clone()]
+fn participation_avg(participation: &[u8], indexes: &[usize], flag_mask: u8) -> f32 {
+    let participant_sum: u32 = indexes
         .iter()
-        .map(|f| has_flag(*f, flag_mask) as u32)
-        .sum();
-    participant_count as f32 / (range.end - range.start) as f32
+        .map(|index| has_flag(participation[*index], flag_mask) as u32)
+        .sum::<u32>();
+    participant_sum as f32 / indexes.len() as f32
 }
 
-fn group_target_participation(ranges: &IndexRanges, state: &StatePartial) -> ParticipationByRange {
-    ranges
+fn score_avg(values: &[u64], indexes: &[usize]) -> f32 {
+    let sum: u64 = indexes.iter().map(|index| values[*index]).sum();
+    sum as f32 / indexes.len() as f32
+}
+
+fn group_target_participation(
+    index_groups: &IndexGroups,
+    state: &StatePartial,
+) -> ParticipationByRange {
+    index_groups
         .iter()
-        .map(|(range_name, range)| {
+        .map(|(range_name, indexes)| {
             (
                 range_name.clone(),
-                range.clone(),
+                indexes.clone(),
                 RangeSummary {
                     target_participation_ratio: participation_avg(
                         &state.previous_epoch_participation,
-                        range,
+                        indexes,
                         TIMELY_TARGET,
                     ),
                     source_participation_ratio: participation_avg(
                         &state.previous_epoch_participation,
-                        range,
+                        indexes,
                         TIMELY_SOURCE,
                     ),
                     head_participation_ratio: participation_avg(
                         &state.previous_epoch_participation,
-                        range,
+                        indexes,
                         TIMELY_HEAD,
                     ),
-                    inactivity_scores_avg: state.inactivity_scores[range.clone()]
-                        .iter()
-                        .sum::<u64>() as f32
-                        / (range.end - range.start) as f32,
+                    inactivity_scores_avg: score_avg(&state.inactivity_scores, indexes),
                 },
             )
         })
@@ -229,7 +233,7 @@ async fn task_fetch_state_every_epoch(
     config: &ConfigSpec,
     beacon_url: &str,
     extra_headers: &HeaderMap,
-    ranges: &IndexRanges,
+    ranges: &IndexGroups,
     dump: bool,
 ) -> Result<()> {
     loop {
@@ -295,7 +299,7 @@ async fn main() -> Result<()> {
         return Err(anyhow!("Must set --groups or --groups_file"));
     };
     let ranges = parse_ranges(&ranges_str)?;
-    println!("index ranges ---\n{}\n---", dump_ranges(&ranges));
+    println!("index ranges ---\n{}\n---", &ranges_str);
 
     let genesis = fetch_genesis(&beacon_url).await.context("fetch_genesis")?;
     println!("beacon genesis {:?}", genesis);

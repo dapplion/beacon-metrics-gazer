@@ -18,6 +18,7 @@ Options:
       --dump                       Dump participation ranges print to stderr on each fetch
   -p, --port <PORT>                Metrics server port [default: 8080]
       --address <ADDRESS>          Metrics server bind address [default: 127.0.0.1]
+  -v, --verbose                    Increase verbosity level
   -h, --help                       Print help
   -V, --version                    Print version
 

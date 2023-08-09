@@ -7,6 +7,7 @@ use config::{fetch_config, ConfigSpec, Genesis};
 use hyper::header::{HeaderName, CONTENT_TYPE};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, HeaderMap, Request, Response, Server};
+use log::{debug, error, info};
 use metrics::{
     set_gauge, HEAD_PARTICIPATION, INACTIVITY_SCORES, INDEXES_PER_GROUP, SOURCE_PARTICIPATION,
     TARGET_PARTICIPATION,
@@ -55,6 +56,9 @@ struct Cli {
     /// Metrics server bind address
     #[arg(long, default_value = "127.0.0.1")]
     address: String,
+    /// Increase verbosity level
+    #[arg(long, short)]
+    verbose: bool,
 }
 
 type IndexGroups = Vec<(String, Vec<usize>)>;
@@ -86,6 +90,8 @@ async fn fetch_epoch_participation(
     beacon_url: &str,
     extra_headers: &HeaderMap,
 ) -> Result<StatePartial> {
+    debug!("fetching head state from {}", beacon_url);
+
     let req = reqwest::Client::new()
         .get(format!("{beacon_url}/eth/v2/debug/beacon/states/head",))
         .header(reqwest::header::ACCEPT, CONTENT_TYPE_SSZ)
@@ -102,6 +108,8 @@ async fn fetch_epoch_participation(
         ));
     }
 
+    debug!("fetch head state request status {}", req.status());
+
     // Additional guard in case the server sends JSON instead of SSZ. Could happen if a proxy or
     // some middleware strips the CONTENT_TYPE header out of this request
     if let Some(content_type) = req.headers().get(CONTENT_TYPE) {
@@ -117,6 +125,8 @@ async fn fetch_epoch_participation(
     }
 
     let state_buf = req.bytes().await?;
+
+    debug!("fetch head state downloaded body size {}", state_buf.len());
 
     deserialize_partial_state(config, &state_buf)
 }
@@ -211,16 +221,14 @@ fn dump_participation_to_stdout(participation_by_range: &ParticipationByRange) {
 
     table.add_row(Row::new(vec![
         Cell::new("Name"),
-        Cell::new("Range"),
         Cell::new("Source"),
         Cell::new("Target"),
         Cell::new("Head"),
     ]));
 
-    for (range_name, range, summary) in participation_by_range.iter() {
+    for (range_name, _, summary) in participation_by_range.iter() {
         table.add_row(Row::new(vec![
             Cell::new(range_name),
-            Cell::new(&format!("{:?}", &range)),
             Cell::new(&summary.source_participation_ratio.to_string()),
             Cell::new(&summary.target_participation_ratio.to_string()),
             Cell::new(&summary.head_participation_ratio.to_string()),
@@ -240,14 +248,14 @@ async fn task_fetch_state_every_epoch(
 ) -> Result<()> {
     loop {
         match current_epoch_start_slot(genesis, config) {
-            Err(e) => eprintln!("error computing current epoch: {:?}", e),
+            Err(e) => error!("error computing current epoch: {:?}", e),
             Ok(slot) => {
                 if slot == 0 {
-                    println!("before genesis, going to sleep")
+                    info!("before genesis, going to sleep")
                 } else {
                     // Only after genesis
                     match fetch_epoch_participation(config, beacon_url, extra_headers).await {
-                        Err(e) => eprintln!("error fetching state: {:?}", e),
+                        Err(e) => error!("error fetching state: {:?}", e),
                         Ok(state) => {
                             let participation_by_range = group_target_participation(ranges, &state);
                             set_participation_to_metrics(&participation_by_range);
@@ -263,7 +271,7 @@ async fn task_fetch_state_every_epoch(
         // Run once on boot, then every interval at end of epoch
 
         time::sleep(to_next_epoch_start(genesis, config).unwrap_or_else(|e| {
-            eprintln!("error computing to_next_epoch_start: {:?}", e);
+            error!("error computing to_next_epoch_start: {:?}", e);
             Duration::from_secs(config.seconds_per_slot * config.slots_per_epoch)
         }))
         .await;
@@ -275,7 +283,15 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let beacon_url = cli.url.clone();
 
-    println!("connecting to beacon URL {:?}", beacon_url);
+    let level = if cli.verbose {
+        log::LevelFilter::Debug
+    } else {
+        log::LevelFilter::Info
+    };
+
+    env_logger::Builder::new().filter_level(level).init();
+
+    info!("connecting to beacon URL {:?}", beacon_url);
 
     let mut extra_headers = HeaderMap::new();
     if let Some(headers_str) = cli.headers {
@@ -289,7 +305,7 @@ async fn main() -> Result<()> {
             let value = parts[1].trim().parse()?;
             extra_headers.insert(name, value);
         }
-        println!("extra headers {:?}", extra_headers);
+        info!("extra headers {:?}", extra_headers);
     }
 
     // Parse groups file mapping index ranges to host names
@@ -301,17 +317,17 @@ async fn main() -> Result<()> {
         return Err(anyhow!("Must set --groups or --groups_file"));
     };
     let ranges = parse_ranges(&ranges_str)?;
-    println!("index ranges ---\n{}\n---", &ranges_str);
+    info!("index ranges ---\n{}\n---", &ranges_str);
 
     let genesis = fetch_genesis(&beacon_url, &extra_headers)
         .await
         .context("fetch_genesis")?;
-    println!("beacon genesis {:?}", genesis);
+    info!("beacon genesis {:?}", genesis);
 
     let config = fetch_config(&beacon_url, &extra_headers)
         .await
         .context("fetch_config")?;
-    println!("beacon config {:?}", config);
+    info!("beacon config {:?}", config);
 
     // Background task fetching state every interval and registering participation
     // in metrics with provided index ranges
@@ -334,9 +350,9 @@ async fn main() -> Result<()> {
         Ok::<_, Infallible>(service_fn(handle_metrics_server_request))
     }));
 
-    println!("Server is running on http://{}", addr);
+    info!("Metrics server is running on http://{}", addr);
     if let Err(e) = server.await {
-        eprintln!("server error: {}", e);
+        error!("Metrics server error: {}", e);
     }
 
     Ok(())

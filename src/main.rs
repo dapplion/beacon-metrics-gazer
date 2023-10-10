@@ -3,7 +3,7 @@ use crate::ranges::parse_ranges;
 use crate::util::{current_epoch_start_slot, resolve_path_or_url, to_next_epoch_start};
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
-use config::{fetch_config, ConfigSpec, Genesis};
+use config::{fetch_config, fetch_health, ConfigSpec, Genesis};
 use hyper::header::{HeaderName, CONTENT_TYPE};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, HeaderMap, Request, Response, Server};
@@ -50,6 +50,9 @@ struct Cli {
     /// Dump participation ranges print to stderr on each fetch
     #[arg(long)]
     dump: bool,
+    /// Skip initial health check
+    #[arg(long)]
+    skip_health_check: bool,
     /// Metrics server port
     #[arg(long, short, default_value_t = 8080)]
     port: u16,
@@ -291,6 +294,17 @@ async fn main() -> Result<()> {
 
     env_logger::Builder::new().filter_level(level).init();
 
+    // Parse groups file mapping index ranges to host names
+    let ranges_str = if let Some(ranges_str) = &cli.ranges {
+        ranges_str.clone()
+    } else if let Some(path_or_url) = &cli.ranges_file {
+        resolve_path_or_url(path_or_url).await?
+    } else {
+        return Err(anyhow!("Must set --groups or --groups_file"));
+    };
+    let ranges = parse_ranges(&ranges_str)?;
+    info!("index ranges ---\n{}\n---", &ranges_str);
+
     info!("connecting to beacon URL {:?}", beacon_url);
 
     let mut extra_headers = HeaderMap::new();
@@ -308,16 +322,23 @@ async fn main() -> Result<()> {
         info!("extra headers {:?}", extra_headers);
     }
 
-    // Parse groups file mapping index ranges to host names
-    let ranges_str = if let Some(ranges_str) = &cli.ranges {
-        ranges_str.clone()
-    } else if let Some(path_or_url) = &cli.ranges_file {
-        resolve_path_or_url(path_or_url).await?
-    } else {
-        return Err(anyhow!("Must set --groups or --groups_file"));
-    };
-    let ranges = parse_ranges(&ranges_str)?;
-    info!("index ranges ---\n{}\n---", &ranges_str);
+    // Wait until node is ready
+    if !cli.skip_health_check {
+        loop {
+            match fetch_health(&beacon_url, &extra_headers).await {
+                Ok(status) => {
+                    if (200..=299).contains(&status) {
+                        info!("beacon node reachable and ready, status {status}");
+                        break;
+                    } else {
+                        error!("beacon node reachable but not ready, status {status}")
+                    }
+                }
+                Err(e) => error!("beacon node not reachable {e:?}"),
+            }
+            time::sleep(Duration::from_secs(1)).await;
+        }
+    }
 
     let genesis = fetch_genesis(&beacon_url, &extra_headers)
         .await

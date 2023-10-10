@@ -16,6 +16,7 @@ Options:
       --ranges <RANGES>            Index ranges to group IDs as JSON or TXT. Example: `{"0..100": "lh-geth-0", "100..200": "lh-geth-1"}
       --ranges-file <RANGES_FILE>  Local path or URL containing a file with index ranges with the format as defined in --ranges
       --dump                       Dump participation ranges print to stderr on each fetch
+      --skip-health-check          Skip initial health check
   -p, --port <PORT>                Metrics server port [default: 8080]
       --address <ADDRESS>          Metrics server bind address [default: 127.0.0.1]
   -v, --verbose                    Increase verbosity level

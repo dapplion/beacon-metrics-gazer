@@ -70,6 +70,20 @@ struct BeaconGenesisResponseData {
     genesis_time: String,
 }
 
+/// - 200: Node is ready
+/// - 206: Node is syncing but can serve incomplete data
+/// - 400: Invalid syncing status code
+/// - 503: Node not initialized or having issues
+/// ref: <https://github.com/ethereum/beacon-APIs/blob/06f65bb6bf3d991d5160c08ec1babc54aa2300d5/apis/node/health.yaml#L16>
+pub async fn fetch_health(url: &str, extra_headers: &HeaderMap) -> Result<u16> {
+    let response = reqwest::Client::new()
+        .get(format!("{}/eth/v1/node/health", url))
+        .headers(extra_headers.clone())
+        .send()
+        .await?;
+    Ok(response.status().as_u16())
+}
+
 pub async fn fetch_genesis(url: &str, extra_headers: &HeaderMap) -> Result<Genesis> {
     let response = reqwest::Client::new()
         .get(format!("{}/eth/v1/beacon/genesis", url))
